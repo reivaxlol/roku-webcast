@@ -9,6 +9,8 @@ import android.os.Bundle
 import android.os.Message
 import android.text.InputType
 import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -17,9 +19,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.ByteArrayInputStream
 
@@ -30,7 +32,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sendButton: Button
     private lateinit var blockCounter: TextView
     private lateinit var progressBar: ProgressBar
+    private lateinit var fullscreenContainer: FrameLayout
     private lateinit var prefs: SharedPreferences
+
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     private val candidates = LinkedHashSet<String>()
     private var blockedCount = 0
@@ -62,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         sendButton = findViewById(R.id.sendButton)
         blockCounter = findViewById(R.id.blockCounter)
         progressBar = findViewById(R.id.progressBar)
+        fullscreenContainer = findViewById(R.id.fullscreenContainer)
         val settingsButton: Button = findViewById(R.id.settingsButton)
 
         setupWebView()
@@ -149,6 +156,30 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 // Refuse to open any popup window at all.
                 return false
+            }
+
+            override fun onShowCustomView(view: View, callback: WebChromeClient.CustomViewCallback) {
+                if (customView != null) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+                customView = view
+                customViewCallback = callback
+                webView.visibility = View.GONE
+                fullscreenContainer.addView(
+                    view,
+                    ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                )
+                fullscreenContainer.visibility = View.VISIBLE
+            }
+
+            override fun onHideCustomView() {
+                fullscreenContainer.visibility = View.GONE
+                fullscreenContainer.removeView(customView)
+                customView = null
+                customViewCallback?.onCustomViewHidden()
+                customViewCallback = null
+                webView.visibility = View.VISIBLE
             }
         }
 
@@ -246,7 +277,9 @@ class MainActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (webView.canGoBack()) {
+        if (customView != null) {
+            webView.webChromeClient?.onHideCustomView()
+        } else if (webView.canGoBack()) {
             webView.goBack()
         } else {
             super.onBackPressed()
