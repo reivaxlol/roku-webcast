@@ -38,6 +38,10 @@ class MainActivity : AppCompatActivity() {
         "segment|chunk|playlist|manifest|upload|source|stream|embed|get_video",
         RegexOption.IGNORE_CASE
     )
+    private val nonMediaExtensionRegex = Regex(
+        "\\.(js|css|png|jpe?g|gif|svg|webp|woff2?|ttf|json|ico|map)(\\?|$)",
+        RegexOption.IGNORE_CASE
+    )
 
     private val adBlockDomains = setOf(
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
@@ -131,6 +135,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun looksLikeMedia(url: String): Boolean {
         if (url.startsWith("data:")) return false
+        if (nonMediaExtensionRegex.containsMatchIn(url)) return false
         return mediaExtensionRegex.containsMatchIn(url) || mediaKeywordRegex.containsMatchIn(url)
     }
 
