@@ -8,12 +8,15 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.ByteArrayInputStream
@@ -26,9 +29,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var urlBar: EditText
     private lateinit var sendButton: Button
+    private lateinit var blockCounter: TextView
+    private lateinit var progressBar: ProgressBar
     private lateinit var prefs: SharedPreferences
 
     private val candidates = LinkedHashSet<String>()
+    private var blockedCount = 0
+    private var blockedDomains: Set<String> = emptySet()
 
     private val mediaExtensionRegex = Regex(
         "\\.(m3u8|ts|mp4|mpd|key|webm)(\\?|$)",
@@ -43,24 +50,19 @@ class MainActivity : AppCompatActivity() {
         RegexOption.IGNORE_CASE
     )
 
-    private val adBlockDomains = setOf(
-        "doubleclick.net", "googlesyndication.com", "googleadservices.com",
-        "adexchangerapid.com", "usrpubtrk.com", "youradexchange.com",
-        "shameful-farm.com", "difficultblock.com", "motionless-bus.com",
-        "acscdn.com", "propellerads.com", "popads.net", "adsterra.com",
-        "exoclick.com", "hilltopads.net"
-    )
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         prefs = getSharedPreferences("roku_cast_prefs", Context.MODE_PRIVATE)
+        blockedDomains = loadBlockedDomains()
 
         webView = findViewById(R.id.webView)
         urlBar = findViewById(R.id.urlBar)
         val goButton: Button = findViewById(R.id.goButton)
         sendButton = findViewById(R.id.sendButton)
+        blockCounter = findViewById(R.id.blockCounter)
+        progressBar = findViewById(R.id.progressBar)
         val settingsButton: Button = findViewById(R.id.settingsButton)
 
         setupWebView()
@@ -86,6 +88,27 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl(startUrl)
     }
 
+    private fun loadBlockedDomains(): Set<String> {
+        return try {
+            assets.open("adblock_domains.txt").bufferedReader().useLines { lines ->
+                lines.map { it.trim() }.filter { it.isNotEmpty() }.toHashSet()
+            }
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun isBlockedHost(host: String): Boolean {
+        if (host.isEmpty()) return false
+        var current = host
+        while (true) {
+            if (blockedDomains.contains(current)) return true
+            val dot = current.indexOf('.')
+            if (dot < 0) return false
+            current = current.substring(dot + 1)
+        }
+    }
+
     private fun navigateToBarUrl() {
         var url = urlBar.text.toString().trim()
         if (url.isEmpty()) return
@@ -103,6 +126,14 @@ class MainActivity : AppCompatActivity() {
         webView.settings.domStorageEnabled = true
         webView.settings.mediaPlaybackRequiresUserGesture = false
 
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView, newProgress: Int) {
+                super.onProgressChanged(view, newProgress)
+                progressBar.progress = newProgress
+                progressBar.visibility = if (newProgress in 1..99) android.view.View.VISIBLE else android.view.View.GONE
+            }
+        }
+
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -111,7 +142,11 @@ class MainActivity : AppCompatActivity() {
                 val url = request.url.toString()
                 val host = request.url.host ?: ""
 
-                if (adBlockDomains.any { blocked -> host == blocked || host.endsWith(".$blocked") }) {
+                if (isBlockedHost(host)) {
+                    runOnUiThread {
+                        blockedCount++
+                        blockCounter.text = "🛡️ $blockedCount"
+                    }
                     return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                 }
 
