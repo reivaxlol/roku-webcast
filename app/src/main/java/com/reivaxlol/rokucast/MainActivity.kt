@@ -22,6 +22,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.ByteArrayInputStream
 
@@ -33,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var blockCounter: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var fullscreenContainer: FrameLayout
+    private lateinit var fullscreenSendButton: Button
     private lateinit var prefs: SharedPreferences
 
     private var customView: View? = null
@@ -69,7 +71,20 @@ class MainActivity : AppCompatActivity() {
         blockCounter = findViewById(R.id.blockCounter)
         progressBar = findViewById(R.id.progressBar)
         fullscreenContainer = findViewById(R.id.fullscreenContainer)
+        fullscreenSendButton = findViewById(R.id.fullscreenSendButton)
         val settingsButton: Button = findViewById(R.id.settingsButton)
+
+        fullscreenSendButton.setOnClickListener {
+            val latest = candidates.lastOrNull()
+            if (latest == null) {
+                Toast.makeText(this, "Aún no se detecta ningún video en esta página", Toast.LENGTH_SHORT).show()
+            } else {
+                val rokuIp = prefs.getString("roku_ip", "192.168.3.46") ?: "192.168.3.46"
+                RokuClient.send(rokuIp, latest) { _, message ->
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
 
         setupWebView()
 
@@ -171,6 +186,8 @@ class MainActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 )
                 fullscreenContainer.visibility = View.VISIBLE
+                fullscreenSendButton.visibility = View.VISIBLE
+                fullscreenSendButton.bringToFront()
             }
 
             override fun onHideCustomView() {
@@ -180,6 +197,7 @@ class MainActivity : AppCompatActivity() {
                 customViewCallback?.onCustomViewHidden()
                 customViewCallback = null
                 webView.visibility = View.VISIBLE
+                fullscreenSendButton.visibility = View.GONE
             }
         }
 
