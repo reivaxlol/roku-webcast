@@ -145,7 +145,8 @@ class MainActivity : AppCompatActivity() {
                 if (isBlockedHost(host)) {
                     runOnUiThread {
                         blockedCount++
-                        blockCounter.text = "🛡️ $blockedCount"
+                        blockCounter.text = "$blockedCount bloqueados"
+                        blockCounter.setTextColor(android.graphics.Color.parseColor("#2fce6e"))
                     }
                     return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                 }
@@ -175,7 +176,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSendButtonLabel() {
-        sendButton.text = "📺 Enviar (${candidates.size})"
+        sendButton.text = "Enviar (${candidates.size})"
     }
 
     private fun showSettingsDialog() {
