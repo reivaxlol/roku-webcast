@@ -3,8 +3,10 @@ package com.reivaxlol.rokucast
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.Message
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
@@ -20,9 +22,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.ByteArrayInputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
 
 class MainActivity : AppCompatActivity() {
 
@@ -109,6 +108,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun registerBlock() {
+        blockedCount++
+        blockCounter.text = "$blockedCount bloqueados"
+        blockCounter.setTextColor(android.graphics.Color.parseColor("#2fce6e"))
+    }
+
     private fun navigateToBarUrl() {
         var url = urlBar.text.toString().trim()
         if (url.isEmpty()) return
@@ -125,6 +130,9 @@ class MainActivity : AppCompatActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.mediaPlaybackRequiresUserGesture = false
+        // Never let the page open a second window/tab (the most common ad-popup mechanism).
+        webView.settings.setSupportMultipleWindows(false)
+        webView.settings.javaScriptCanOpenWindowsAutomatically = false
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
@@ -132,9 +140,31 @@ class MainActivity : AppCompatActivity() {
                 progressBar.progress = newProgress
                 progressBar.visibility = if (newProgress in 1..99) android.view.View.VISIBLE else android.view.View.GONE
             }
+
+            override fun onCreateWindow(
+                view: WebView,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                // Refuse to open any popup window at all.
+                return false
+            }
         }
 
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                val host = request.url.host ?: ""
+                if (isBlockedHost(host)) {
+                    runOnUiThread { registerBlock() }
+                    return true
+                }
+                return false
+            }
+
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest
@@ -143,11 +173,7 @@ class MainActivity : AppCompatActivity() {
                 val host = request.url.host ?: ""
 
                 if (isBlockedHost(host)) {
-                    runOnUiThread {
-                        blockedCount++
-                        blockCounter.text = "$blockedCount bloqueados"
-                        blockCounter.setTextColor(android.graphics.Color.parseColor("#2fce6e"))
-                    }
+                    runOnUiThread { registerBlock() }
                     return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                 }
 
@@ -204,36 +230,18 @@ class MainActivity : AppCompatActivity() {
         }
         val list = candidates.toList().reversed()
         AlertDialog.Builder(this)
-            .setTitle("Elige el video a enviar")
+            .setTitle("Elige el video a reproducir")
             .setItems(list.toTypedArray()) { _, which ->
-                sendToRoku(list[which])
+                openInPlayer(list[which])
             }
             .setNegativeButton("Cancelar", null)
             .show()
     }
 
-    private fun sendToRoku(videoUrl: String) {
-        val rokuIp = prefs.getString("roku_ip", "192.168.3.46") ?: "192.168.3.46"
-        Thread {
-            try {
-                val encoded = URLEncoder.encode(videoUrl, "UTF-8")
-                val connection = URL("http://$rokuIp:8060/input?contentId=$encoded")
-                    .openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.doOutput = false
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-                val code = connection.responseCode
-                connection.disconnect()
-                runOnUiThread {
-                    Toast.makeText(this, "Enviado a Roku ($code)", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
+    private fun openInPlayer(videoUrl: String) {
+        val intent = Intent(this, PlayerActivity::class.java)
+        intent.putExtra(PlayerActivity.EXTRA_VIDEO_URL, videoUrl)
+        startActivity(intent)
     }
 
     @Suppress("DEPRECATION")
